@@ -101,7 +101,12 @@ Tested on BLAT_ECOLX_Stiffler_2015 (4,996 single-substitution variants of TEM-1 
 | ESM-2 8M | 0.3748 | 2.03e-166 | 6.2s |
 | ESM-2 650M | **0.7247** | ~0.0 | 35.9s |
 
-Both results fall within the expected range for ESM-2 zero-shot wildtype marginal scoring on ProteinGym substitution benchmarks.
+<p align="center">
+  <img src="assets/correlation_8m.png" width="48%" alt="ESM-2 8M correlation" />
+  <img src="assets/correlation_650m.png" width="48%" alt="ESM-2 650M correlation" />
+</p>
+
+Both results fall within the expected range for ESM-2 zero-shot wildtype marginal scoring on ProteinGym substitution benchmarks. The 650M model shows a visibly tighter correlation between predicted and measured fitness.
 
 ### Run tests
 
