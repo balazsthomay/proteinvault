@@ -247,7 +247,9 @@ def run_demo(
         print("  ERROR: Not enough matched scores to compute correlation")
         return
 
-    rho, pvalue = spearmanr(predicted, measured)
+    corr_result = spearmanr(predicted, measured)
+    rho = float(corr_result[0])  # type: ignore[arg-type]
+    pvalue = float(corr_result[1])  # type: ignore[arg-type]
 
     print(f"\n{'='*60}")
     print("RESULTS")

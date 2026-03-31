@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import torch
 from transformers import AutoModelForMaskedLM, AutoTokenizer
@@ -13,33 +14,33 @@ class ESM2Scorer(Scorer):
         self, model_name: str = "facebook/esm2_t6_8M_UR50D"
     ) -> None:
         self.model_name = model_name
-        self.model: AutoModelForMaskedLM | None = None
-        self.tokenizer: AutoTokenizer | None = None
+        self._model: Any = None
+        self._tokenizer: Any = None
 
     def load(self) -> None:
         logger.info("Loading ESM-2 model: %s", self.model_name)
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self.model = AutoModelForMaskedLM.from_pretrained(self.model_name)
-        self.model.eval()
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        self._model = AutoModelForMaskedLM.from_pretrained(self.model_name)
+        self._model.eval()
         logger.info("ESM-2 model loaded successfully")
 
     def unload(self) -> None:
-        self.model = None
-        self.tokenizer = None
+        self._model = None
+        self._tokenizer = None
         logger.info("ESM-2 model unloaded")
 
     def score(
         self, wild_type: str, mutants: list[ScoringRequest]
     ) -> list[ScoringResult]:
-        if self.model is None or self.tokenizer is None:
+        if self._model is None or self._tokenizer is None:
             raise RuntimeError("Model not loaded. Call load() first.")
 
         # Single forward pass on wild-type
-        inputs = self.tokenizer(
+        inputs = self._tokenizer(
             wild_type, return_tensors="pt", add_special_tokens=True
         )
         with torch.no_grad():
-            logits = self.model(**inputs).logits
+            logits = self._model(**inputs).logits
 
         # log_probs shape: [seq_len + 2, vocab_size] (includes BOS/EOS)
         log_probs = torch.log_softmax(logits[0], dim=-1)
@@ -74,8 +75,8 @@ class ESM2Scorer(Scorer):
             # 1-based position maps to token index = position
             tok_idx = pos
 
-            wt_token_id = self.tokenizer.convert_tokens_to_ids(wt_aa)
-            mt_token_id = self.tokenizer.convert_tokens_to_ids(mt_aa)
+            wt_token_id = self._tokenizer.convert_tokens_to_ids(wt_aa)
+            mt_token_id = self._tokenizer.convert_tokens_to_ids(mt_aa)
 
             delta = (
                 log_probs[tok_idx, mt_token_id]
