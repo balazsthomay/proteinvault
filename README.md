@@ -1,14 +1,8 @@
 # ProteinVault
 
-A versioned protein data service with ML model gateway, built as a portfolio project for [Cradle Bio's Backend Software Engineer (Python) role](https://jobs.ashbyhq.com/cradlebio/ae6e6352-28e5-4b2f-b1d9-da7da078f011).
+A versioned data service for biological sequences and assay measurements, with an integrated ML model gateway for protein fitness prediction.
 
-This project addresses the two core architectural responsibilities from Cradle's job description:
-
-1. **Efficient representation of the full variety of biochemicals** -- a unified data model handling standard proteins, non-standard amino acids (selenocysteine, pyrrolysine, ambiguity codes), multi-chain proteins (antibodies), DNA, and RNA sequences, with append-only versioned storage and assay measurement tracking.
-
-2. **Versioned API design for ML model access** -- a model registry with version provenance tracking, ESM-2 zero-shot protein fitness prediction, async batch inference, and full reproducibility (every prediction records which model version + data version produced it).
-
-Uses real ProteinGym deep mutational scanning data and a real protein language model (ESM-2) -- not mocks.
+Stores proteins, multi-chain complexes, and nucleotide sequences in append-only versioned tables. Registers and serves protein language models (ESM-2) with full provenance tracking -- every prediction records exactly which model version and data version produced it. Works end-to-end with real ProteinGym deep mutational scanning data.
 
 ## Architecture
 
@@ -31,17 +25,17 @@ Uses real ProteinGym deep mutational scanning data and a real protein language m
                     append-only versioned
 ```
 
-### Key Design Decisions
+### Design Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Database | DuckDB | Zero-config, Arrow-native columnar storage. Excellent for analytical queries over assay data (filter by fitness, rank, compare). Single-writer is fine for a local single-user service. |
-| Versioning | Append-only with `is_active` flag | Each data load creates a new immutable version. Undo/redo by toggling `is_active` on loads -- no data ever deleted. Mirrors Cradle's event-sourced data table pattern. |
+| Database | DuckDB | Zero-config, Arrow-native columnar storage. Excellent for analytical queries over assay data (filter by fitness, rank, compare). Single-writer is fine for a local single-user service. Tradeoff vs PostgreSQL: no concurrent writers, but no setup friction and better analytical performance. |
+| Versioning | Append-only with `is_active` flag | Each data load creates a new immutable version. Undo/redo by toggling `is_active` on loads -- no data ever deleted. Event-sourced design gives full auditability. |
 | Multi-chain | `sequences` -> `chains` (1:N) | Single-chain proteins use 1 chain. Antibodies use 2 (H/L). Homo-multimers use N. Unified schema, no special-casing. |
-| Sequence validation | Type-specific alphabets with strict/lenient | Handles 20 standard AAs, non-standard (U,O,X,B,Z,J), gaps, DNA, RNA. Strict mode for clean data, lenient for real-world messiness. |
-| Scoring | Wildtype marginal | Single forward pass through ESM-2 for ALL mutants of a wild-type. O(1) in number of mutants. ~1000x faster than masked marginal. |
-| ML framework | HuggingFace `transformers` | `fair-esm` is unmaintained (last release Nov 2022). `transformers` is actively maintained, Python 3.12 compatible, MIT license. |
-| Async inference | FastAPI BackgroundTasks | No external task queue. Submit prediction -> get task ID -> poll. Sufficient for single-user service. |
+| Sequence validation | Type-specific alphabets with strict/lenient | Handles 20 standard AAs, non-standard (U,O,X,B,Z,J), gaps for MSA data, DNA, RNA. Strict mode for clean data, lenient for real-world messiness. |
+| Scoring | Wildtype marginal | Single forward pass through ESM-2 for ALL mutants of a wild-type. O(1) in number of mutants. ~1000x faster than masked marginal scoring. |
+| ML framework | HuggingFace `transformers` | Actively maintained, Python 3.12 compatible, MIT license. `fair-esm` (Meta's original package) hasn't been updated since November 2022. |
+| Async inference | FastAPI BackgroundTasks | No external task queue needed. Submit prediction -> get task ID -> poll for completion. Production systems would swap this for Celery/Redis. |
 
 ### Data Versioning Model
 
@@ -107,7 +101,7 @@ Tested on BLAT_ECOLX_Stiffler_2015 (4,996 single-substitution variants of TEM-1 
 | ESM-2 8M | 0.3748 | 2.03e-166 | 6.2s |
 | ESM-2 650M | **0.7247** | ~0.0 | 35.9s |
 
-Both results fall within the expected range (0.3-0.7) for ESM-2 zero-shot wildtype marginal scoring on ProteinGym substitution benchmarks. The 650M model achieves strong correlation, confirming the scoring pipeline is working correctly end-to-end.
+Both results fall within the expected range for ESM-2 zero-shot wildtype marginal scoring on ProteinGym substitution benchmarks.
 
 ### Run tests
 
@@ -124,7 +118,7 @@ uv run pytest --cov=proteinvault --cov-report=term-missing
 
 ## API Reference
 
-### Component A: Data Layer
+### Data Layer
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -139,7 +133,7 @@ uv run pytest --cov=proteinvault --cov-report=term-missing
 | POST | `/api/v1/datasets/{id}/redo` | Redo undone load |
 | GET | `/api/v1/datasets/{id}/query?assay=X` | Query assay measurements |
 
-### Component B: Model Gateway
+### Model Gateway
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -164,14 +158,9 @@ src/proteinvault/
 
 ## Tech Stack
 
-- **Python 3.12**, **FastAPI**, **Pydantic** -- matches Cradle's stack
-- **DuckDB** -- embedded analytical database with Arrow support
+- **Python 3.12**, **FastAPI**, **Pydantic**
+- **DuckDB** -- embedded analytical database
 - **HuggingFace Transformers** -- ESM-2 protein language model
 - **uv** -- dependency management
 - **ruff** -- linting, **pyright** -- type checking
 - **pytest** -- testing (83 tests, 83% coverage)
-
-## Deviations from Spec
-
-- **ESM-2 via `transformers` instead of `fair-esm`**: The `fair-esm` package hasn't been updated since November 2022 and has Python 3.12 compatibility issues. HuggingFace `transformers` is actively maintained and provides the same ESM-2 models.
-- **DuckDB instead of PostgreSQL**: Chose DuckDB for zero-config setup, native Arrow support, and excellent analytical query performance. The tradeoff is single-writer concurrency, which is acceptable for this single-user local service.
